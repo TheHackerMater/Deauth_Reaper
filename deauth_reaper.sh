@@ -47,6 +47,9 @@ fi
 
 # Mostrar redes encontradas
 echo -e "${YELLOW}🔍 Redes Wi-Fi detectadas:${RESET}"
+echo -e "${BLUE}----------------------------------------${RESET}"
+
+# Mostrar las redes Wi-Fi de manera ordenada
 awk -F, 'NR>2 {print NR-2") "$14" (BSSID: "$1", Canal: "$4")"}' redes_scan-01.csv | column -t
 echo -e "${BLUE}----------------------------------------${RESET}"
 
